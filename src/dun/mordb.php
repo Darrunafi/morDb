@@ -1,6 +1,7 @@
 <?php
 /**
 * mordb class
+* version 1.1
 */
 namespace dun;
 
@@ -11,26 +12,26 @@ class mordb{
 	private $f_all;
 	private $table;
 	public $messages;
-	
+
 
 	function __construct($username,$password,$host,$dbname,$options = array()) {
 		try {
 			$this->VPdo = new \PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $username, $password, $options);
-			
+
 		} catch (PDOException $e) {
 			print "Error!: " . $e->getMessage() . "<br/>";
 			die();
 		}
 	}
-	
+
 
 	function table($table){
 		$this->table = $table;
 		return $this;
 	}
-	
 
-	function orderBy($code,$param = null){ 
+
+	function orderBy($code,$param = null){
 		if(empty($this->sql)){
 			$this->sql = "Select * from $this->table";
 		}
@@ -40,14 +41,14 @@ class mordb{
 		return $this;
 	}
 
-	function add($code){ 
+	function add($code){
 		if(empty($this->sql)){
 			$this->sql = "Select * from $this->table";
 		}
 		$this->sql .= " $code";
 		return $this;
 	}
-	
+
 
 	function onlyRun(){
 		if(empty($this->sql)){
@@ -56,7 +57,7 @@ class mordb{
 		$deyim = $this->run();
 		return $deyim;
 	}
-	
+
 	function limit($Start,$limit = null){
 		if(empty($this->sql)){
 			$this->sql = "Select * from $this->table";
@@ -66,16 +67,16 @@ class mordb{
 		}else{
 			$this->sql .= " Limit $Start,$limit";
 		}
-		
+
 		return $this;
 	}
-	
-	/**
-    * Add Where your sql code
+
+/*
+  * Add Where your sql code
 	* Examples: Where("x","y") => "x = y"
 	*			Where("x","=","y") => "x = y"
 	*			Where(array('x' => 'y')) => "x = y"
-    */
+  */
 	function where($where, $conditionals = "", $data = ""){
 		if(empty($this->sql)){
 			$this->sql = "Select * from $this->table";
@@ -96,7 +97,7 @@ class mordb{
 		}
 		return $this;
 	}
-	
+
 	/**
     * Return first data
     */
@@ -113,7 +114,7 @@ class mordb{
 		}
 		return $r;
 	}
-	
+
 	/**
     * Return all data
     */
@@ -130,12 +131,12 @@ class mordb{
 		}
 		return $r;
 	}
-	
+
 	/**
     * Run sql codes
     */
-	private function run(){ 
-			$this->showSql();
+	private function run(){
+			//$this->showSql();
 			$deyim = $this->VPdo->prepare($this->sql);
 			if($deyim->execute($this->bind) !== false) {
 				$this->sql = null;
@@ -146,7 +147,7 @@ class mordb{
 			$this->bind = null;
 
 	}
-	
+
 	/**
     * Save or Update data
     */
@@ -175,23 +176,31 @@ class mordb{
 				$lastField = $column["Field"];
 			}
 			if($auto != null){
-				$Control = $this->table($this->table)->where($auto,$r[$auto])->first();
-
-				if(isset($Control->scalar)){
-					if(!$Control->scalar){
-						if($this->insert($data,$ir) > 0){
-							return true;
+				if($r[$auto] != "null"){
+						$Control = $this->table($this->table)->where($auto,$r[$auto])->first();
+						if(isset($Control->scalar)){
+							if(!$Control->scalar){
+								if($this->insert($data,$ir) > 0){
+									return true;
+								}else{
+									return false;
+								}
+							}
 						}else{
-							return false;
+							if($this->update($data,$ir,$auto,$r[$auto]) > 0){
+								return true;
+							}else{
+								return false;
+							}
 						}
-					}
 				}else{
-					if($this->update($data,$ir,$auto,$r[$auto]) > 0){
+					if($this->insert($data,$ir) > 0){
 						return true;
 					}else{
 						return false;
 					}
 				}
+
 			}else{
 				$this->messages[] = "At least one auto_increment field is required for update";
 				if($this->insert($data,$ir) > 0){
@@ -202,48 +211,70 @@ class mordb{
 			}
 		}
 	}
-	
+
 	/**
     * Clear Tables
     */
-	
+
 	function clear(){
 		if(!empty($this->table)){
 
 			$rd = $this->Query("TRUNCATE $this->table");
-		
+
 			 if(isset($rd) and !empty($rd)){
 				return true;
 			}else{
 				return false;
-			} 
+			}
 		}
 	}
-	
+
+	function find($value)
+	{
+		if(!empty($this->table) and is_numeric($value)){
+			$auto = $this->getAutoImplement();
+			return $this->table($this->table)->where($auto,$value)->first();
+		}
+	}
+
 	/**
     * Delete Tables
     */
-	function delete($info,$id = ""){
+	function delete($info){
 		if(!empty($this->table) and !empty($info)){
-			if($id != ""){
-				$rd = $this->Query("DELETE FROM `$this->table` WHERE `id` = $id");
-			}else{
-				if(isset($info->id)){
-					$rd = $this->Query("DELETE FROM `$this->table` WHERE `id` = $info->id");
-				}
-			}
-			if(isset($rd) and !empty($rd)){
-				return true;
-			}else{
-				return false;
+			$auto = $this->getAutoImplement();
+			if($auto != false){
+				$autoVal = $info->{$auto};
+					if(isset($autoVal)){
+						$rd = $this->query("DELETE FROM `$this->table` WHERE `$auto` = $autoVal");
+						if(isset($rd) and !empty($rd)){
+							return true;
+						}else{
+							return false;
+						}
+					}else{
+						return false;
+					}
 			}
 		}
 	}
-	
+
+	function getAutoImplement(){
+		if(!empty($this->table)){
+			$columns = $this->query("SHOW COLUMNS FROM $this->table");
+			if(empty($columns)){ die("Table name not found"); }
+			foreach($columns as $column){
+				if($column["Extra"] == "auto_increment"){
+					return $column["Field"];
+				}
+			}
+			return false;
+		}
+	}
 	/**
-    * Update Function 
+    * Update Function
     */
-	
+
 	private function update($info,$fields,$ff,$v){
 		if(!empty($this->table)){
 			$fieldSize = sizeof($fields);
@@ -252,24 +283,24 @@ class mordb{
 			for($f = 0; $f < $fieldSize; ++$f) {
 				if($f > 0)
 					$sql .= ", ";
-					$sql .= $fields[$f] . " = :update_" . $fields[$f]; 
+					$sql .= $fields[$f] . " = :update_" . $fields[$f];
 			}
 			$sql .= " WHERE `$ff` = '" . $v . "';";
 
 			$this->sql = $sql;
-	
+
 			$bind = [];
 			foreach($fields as $field)
 				$bind[":update_$field"] = $info->$field;
-			
-			$this->bind = $bind;	
+
+			$this->bind = $bind;
 			$deyim = $this->run();
 			return $deyim->rowCount();
 		}
 	}
-	
+
 	/**
-    * Insert Function 
+    * Insert Function
     */
 	private function insert($info,$fields){
 		if(!empty($this->table)){
@@ -279,26 +310,26 @@ class mordb{
 			foreach($fields as $fieldd){
 
 					$bind[":$fieldd"] = $info->$fieldd;
-				
+
 			}
-				
-			
+
+
 			$this->bind = $bind;
-			
+
 			$deyim = $this->run();
 			return $deyim->rowCount();
-		} 
+		}
 	}
-	
+
 	/**
     * Sql Query Function
     */
-	
+
 	function query($sql){
 		return $this->VPdo->query($sql);
 	}
-	
-	
+
+
 	/**
     * Show Sql Queries
     */
@@ -306,9 +337,9 @@ class mordb{
 		echo "<hr>";
 		echo $this->sql . "<br />";
 		print_r($this->bind);
-		echo "<hr>"; 
+		echo "<hr>";
 	}
-	
+
 	/**
     * Replace last info
     */
@@ -322,7 +353,7 @@ class mordb{
 
 		return $subject;
 	}
-	
-	
+
+
 }
 ?>
